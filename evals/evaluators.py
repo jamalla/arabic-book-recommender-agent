@@ -7,8 +7,10 @@
 
 Plus run-level scores for the whole experiment: avg_fit, grounded_rate, invented_total.
 """
+import difflib
 import json
 import os
+import re
 from functools import cache
 
 import pandas as pd
@@ -19,6 +21,7 @@ from bookrec.search import CATALOG_PATH, normalize_arabic
 
 EXTRACT_MODEL = os.getenv("OPENAI_MODEL", "gpt-6-luna")
 JUDGE_MODEL = os.getenv("JUDGE_MODEL", "gpt-6.1-sol")
+SAME_TITLE_RATIO = 0.9  # tolerate a one-letter typo, e.g. «مبائ» in the data vs «مبادئ» in the answer
 
 
 @cache
@@ -26,9 +29,14 @@ def _openai():
     return OpenAI()
 
 
+def _letters(text):
+    """Letters only: spaces, punctuation and invisible marks must not decide whether a book exists."""
+    return re.sub(r"[\W_]+", "", normalize_arabic(text))
+
+
 @cache
 def _catalog_titles():
-    return [normalize_arabic(title) for title in pd.read_csv(CATALOG_PATH)["title"]]
+    return [_letters(title) for title in pd.read_csv(CATALOG_PATH)["title"]]
 
 
 def _ask_json(model, instructions, text, schema_name, schema):
@@ -65,8 +73,12 @@ def recommended_titles(answer):
 
 
 def in_catalog(title):
-    key = normalize_arabic(title).strip(' "«»*:.-')
-    return bool(key) and any(key == c or key in c or c in key for c in _catalog_titles())
+    """True if the title matches a catalog title by its letters: equal, contained, or 90%+ similar."""
+    key = _letters(title)
+    return bool(key) and any(
+        key in c or c in key or difflib.SequenceMatcher(None, key, c).ratio() >= SAME_TITLE_RATIO
+        for c in _catalog_titles()
+    )
 
 
 def catalog_check(*, output, **kwargs):
