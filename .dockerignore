@@ -1,0 +1,8 @@
+# Only what the Dockerfile copies belongs in the build: no secrets, no raw data, no notebooks.
+.git
+.env
+.venv
+**/__pycache__
+data/raw/
+notebooks/
+evals/
