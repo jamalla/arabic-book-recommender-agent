@@ -1,4 +1,5 @@
 """Milestone 3 - the agent: an OpenAI model that uses our search engine as a TOOL.
+Milestone 4 - every answer is traced in Langfuse, for eval runs and real chat users alike.
 
 The model never reads catalog.csv. It asks search_books() for candidates and writes the
 Arabic answer from what the tool returns. Tool-calling loop as in OpenAI's guide:
@@ -11,11 +12,13 @@ import os
 import sys
 
 from dotenv import load_dotenv
+from langfuse import get_client, propagate_attributes
 from openai import OpenAI
 
 from bookrec.search import BookSearch
 
-load_dotenv()  # reads OPENAI_API_KEY (and the optional OPENAI_MODEL) from .env
+load_dotenv()  # OPENAI_API_KEY, LANGFUSE_* keys and the optional OPENAI_MODEL from .env
+os.environ.setdefault("LANGFUSE_BASE_URL", "https://cloud.langfuse.com")  # Langfuse EU region
 
 DEFAULT_MODEL = "gpt-6-luna"  # cheap, fast, supports function calling
 MAX_TOOL_ROUNDS = 3           # safety net: the loop can never run forever
@@ -25,6 +28,8 @@ SYSTEM_PROMPT_V1 = """You are a friendly bookstore assistant for Arabic readers.
 Use the search_books tool to look up books in our catalog, then recommend books that match
 the reader's request, with one short sentence on why each one fits.
 Always answer in Arabic."""
+
+PROMPTS = {"v1": SYSTEM_PROMPT_V1}
 
 SEARCH_TOOL = {
     "type": "function",
@@ -49,31 +54,76 @@ SEARCH_TOOL = {
 }
 
 
-class BookAgent:
-    """One question in, one Arabic answer out, with every tool call recorded."""
+def _plain(items):
+    """OpenAI SDK objects -> plain dicts, so Langfuse can display them."""
+    return [item if isinstance(item, dict) else item.model_dump(exclude_none=True) for item in items]
 
-    def __init__(self, system_prompt=SYSTEM_PROMPT_V1, model=None, search=None, client=None):
-        self.system_prompt = system_prompt
+
+class BookAgent:
+    """Chat turns in, Arabic answers out. Every model call and tool call is traced in Langfuse."""
+
+    def __init__(self, prompt_version="v1", model=None, search=None, client=None):
+        self.prompt_version = prompt_version
+        self.system_prompt = PROMPTS[prompt_version]
         self.model = model or os.getenv("OPENAI_MODEL", DEFAULT_MODEL)
         self.search = search or BookSearch()
         self.client = client or OpenAI()
 
     def search_books(self, query):
-        return self.search.search(query, k=5)
+        with get_client().start_as_current_observation(
+            as_type="tool", name="search_books", input={"query": query}
+        ) as tool:
+            books = self.search.search(query, k=5)
+            tool.update(output=books)
+        return books
 
     def _ask_model(self, conversation, tool_choice="auto"):
-        return self.client.responses.create(
+        with get_client().start_as_current_observation(
+            as_type="generation",
+            name="llm",
             model=self.model,
-            instructions=self.system_prompt,
-            tools=[SEARCH_TOOL],
-            tool_choice=tool_choice,
-            input=conversation,
-        )
+            input=[{"role": "system", "content": self.system_prompt}, *_plain(conversation)],
+        ) as generation:
+            response = self.client.responses.create(
+                model=self.model,
+                instructions=self.system_prompt,
+                tools=[SEARCH_TOOL],
+                tool_choice=tool_choice,
+                input=conversation,
+            )
+            generation.update(
+                output=_plain(response.output),
+                usage_details={
+                    "input_tokens": response.usage.input_tokens,
+                    "output_tokens": response.usage.output_tokens,
+                },
+            )
+        return response
 
-    def answer(self, question):
-        """Run the tool-calling loop. Returns the answer plus every search the model made."""
-        conversation = [{"role": "user", "content": question}]
-        steps = []  # [{"query": ..., "books": [...]}] - what the model asked for and got back
+    def answer(self, question, history=None, session_id=None, tags=None):
+        """Answer one chat turn.
+
+        history: earlier turns of the same chat, as [{"role": "user" | "assistant", "content": str}].
+        session_id groups the turns of one chat in Langfuse; tags mark eval vs production runs.
+        Returns the answer, every search the model made, and the Langfuse trace id (for scores).
+        """
+        langfuse = get_client()
+        attributes = {"tags": tags or [], "metadata": {"model": self.model, "prompt": self.prompt_version}}
+        if session_id:
+            attributes["session_id"] = session_id
+        with langfuse.start_as_current_observation(
+            as_type="agent", name="book-agent", input={"question": question, "history": history or []}
+        ) as agent_span:
+            with propagate_attributes(**attributes):
+                conversation = list(history or []) + [{"role": "user", "content": question}]
+                result = self._run(conversation)
+            result["trace_id"] = langfuse.get_current_trace_id()
+            agent_span.update(output=result["answer"])
+        return result
+
+    def _run(self, conversation):
+        """The tool-calling loop. Returns the answer plus [{"query": ..., "books": [...]}] per search."""
+        steps = []
         for _ in range(MAX_TOOL_ROUNDS):
             response = self._ask_model(conversation)
             calls = [item for item in response.output if item.type == "function_call"]
@@ -96,7 +146,8 @@ class BookAgent:
 
 if __name__ == "__main__":
     question = " ".join(sys.argv[1:]) or "أريد رواية تاريخية"
-    result = BookAgent().answer(question)
+    result = BookAgent().answer(question, tags=["cli"])
     for step in result["steps"]:
         print("search_books:", step["query"], "->", [book["book_id"] for book in step["books"]])
     print(result["answer"])
+    get_client().flush()  # short-lived script: send the trace before exiting

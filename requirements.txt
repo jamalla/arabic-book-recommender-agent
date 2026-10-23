@@ -4,3 +4,4 @@ pandas>=2.2           # milestone 1: cleaning the dataset
 kagglehub>=0.3        # milestone 1: downloads the public Jamalon dataset
 scikit-learn>=1.4     # milestone 2: TF-IDF search engine
 openai>=1.66          # milestone 3: the agent (Responses API + function calling)
+langfuse>=4.10        # milestone 4: tracing, datasets and experiments
