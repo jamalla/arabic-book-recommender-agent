@@ -2,3 +2,4 @@
 python-dotenv>=1.0    # loads the keys from .env into environment variables
 pandas>=2.2           # milestone 1: cleaning the dataset
 kagglehub>=0.3        # milestone 1: downloads the public Jamalon dataset
+scikit-learn>=1.4     # milestone 2: TF-IDF search engine
