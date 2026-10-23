@@ -22,7 +22,7 @@ Every milestone is committed separately, so you can check out any step and see t
 |---|-----------|---------|--------|
 | 0 | Project skeleton | Separate code, secrets and data from day one | ✅ |
 | 1 | Prepare the data | A trustworthy 200-book catalog from the Jamalon dataset | ✅ |
-| 2 | Search engine | Char-level TF-IDF that tolerates Arabic spelling variations | ⏳ |
+| 2 | Search engine | Char-level TF-IDF that tolerates Arabic spelling variations | ✅ |
 | 3 | Agent | An LLM that calls the search tool and answers in Arabic | ⏳ |
 | 4 | Evaluate with Langfuse | Traces, 12 fixed test questions, code check + LLM judge | ⏳ |
 | 5 | Improve the prompt | Change one thing, re-test, keep it only if it wins | ⏳ |
@@ -34,8 +34,7 @@ Every milestone is committed separately, so you can check out any step and see t
 The catalog comes from the public
 [Jamalon Arabic Books Dataset](https://www.kaggle.com/datasets/dareenalharthi/jamalon-arabic-books-dataset)
 (books scraped from the Jamalon online bookstore). It was explored step by step in
-[notebooks/01_data_exploration.ipynb](notebooks/01_data_exploration.ipynb)
-([run it on Kaggle](https://www.kaggle.com/code/jamalla/jamalon-eda-arabic-book-recommender)).
+[notebooks/01_data_exploration.ipynb](notebooks/01_data_exploration.ipynb).
 
 | Step | Books |
 |------|------:|
@@ -45,8 +44,33 @@ The catalog comes from the public
 | Known author, 10 chosen categories, balanced sample of 20 each (seed 42) | **200** |
 
 `python -m bookrec.prepare_data` downloads the dataset and rebuilds
-[data/catalog.csv](data/catalog.csv). Its fingerprint is `20958bc305` both on Kaggle and on a
-local machine, so anyone can reproduce exactly the same 200 books.
+[data/catalog.csv](data/catalog.csv). Current fingerprint: `3d092a3bb7`.
+
+The first version (`20958bc305`, identical on Kaggle and on a local machine) still contained
+scraping leftovers such as the literal text `u200e` in some titles. The search demo in
+Milestone 2 exposed them, `clean_text()` now removes them, and the catalog was rebuilt.
+
+## Search engine
+
+[bookrec/search.py](bookrec/search.py) joins each book's title, author, category, subcategory and
+description, normalizes Arabic spelling, and indexes **character n-grams (2 to 4 letters)** with
+TF-IDF. A request is normalized the same way and ranked by cosine similarity (0 to 1).
+
+```bash
+python -m bookrec.search "روايات عن الحب"
+```
+
+| Normalization | Example |
+|---|---|
+| أ إ آ → ا and ة → ه | «الإسلامية» → «الاسلاميه» |
+| ى → ي | «مستشفى» → «مستشفي» |
+| remove tashkeel | «القُرْآن» → «القران» |
+
+Why characters, not words? «رواية» and «روايات» share 9 n-grams, and «لتربية» still matches «تربية».
+[notebooks/02_search_engine.ipynb](notebooks/02_search_engine.ipynb) compares both approaches and shows
+the key limitation: search **always** returns k books, even for «هاري بوتر» (Harry Potter), which is
+not in the catalog (scores around 0.1). Deciding that nothing fits is the agent's job, and the trap
+questions in Milestone 4 test exactly that.
 
 ## Project layout (filled in milestone by milestone)
 
@@ -66,6 +90,7 @@ py -3.11 -m venv .venv
 pip install -r requirements.txt
 copy .env.example .env          # then put your real keys in .env, never commit it
 python -m bookrec.prepare_data  # rebuilds data/catalog.csv
+python -m bookrec.search "كتب عن تربية الأطفال"
 ```
 
 ## License
