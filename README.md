@@ -9,10 +9,22 @@ measurements that it improves, and runs online.
 ## How it works
 
 ```text
-Reader ──question──▶ Web app ──▶ Agent (OpenAI LLM) ──tool call──▶ search_books() ──▶ Catalog
-                                   │                               char TF-IDF        200 real books
-                                   └──traces──▶ Langfuse (prompts, tool calls, answers, scores)
+Reader ──chat──▶ Gradio app ──▶ LangGraph agent ──tool call──▶ search_books() ──▶ Catalog
+(HTTPS)          AWS ECS Express   OpenAI, prompt v2             char TF-IDF        200 real books
+                       │
+                       └──traces, 👍/👎──▶ Langfuse ◀──the same 12-question experiments
 ```
+
+## Results at a glance
+
+| Metric (same 12 test questions) | First agent (Milestone 4) | Shipped agent (Milestone 5) |
+|---|---:|---:|
+| Average fit (LLM judge, 0 to 1) | 0.75 | 1.00 |
+| Answers with no invented books | 11 / 12 | 12 / 12 |
+| Invented books | 8 | 0 |
+
+The full story, from the test design to the lessons from production:
+**[docs/evaluation-article.md](docs/evaluation-article.md)**.
 
 ## Roadmap
 
@@ -27,7 +39,7 @@ Every milestone is committed separately, so you can check out any step and see t
 | 4 | Evaluate with Langfuse | Traces, 12 fixed test questions, code check + LLM judge | ✅ |
 | 5 | Improve | A stricter prompt and a LangGraph agent, kept only if they win | ✅ |
 | 6 | Deploy on AWS | Gradio chat app in a container on ECS Express Mode, HTTPS, secure keys | ✅ |
-| 7 | Document and clean up | README, evaluation article, delete cloud resources | ⏳ |
+| 7 | Document | README and evaluation article; AWS removal steps documented, the app is kept live | ✅ |
 
 ## Data
 
@@ -199,6 +211,9 @@ Lessons from going live:
   the catalog, not at the agent. Read the trace, then decide: fix the agent or fix the data, and add the
   question to the test set either way.
 
+**Status:** the app is still running on AWS (about $1.5 a day). To take it down, follow *Remove* in
+[deploy/README.md](deploy/README.md).
+
 ## Project layout (filled in milestone by milestone)
 
 ```text
@@ -207,6 +222,7 @@ data/        catalog.csv is committed; raw/ downloads are git-ignored
 notebooks/   exploration and evaluation notebooks (run on Kaggle)
 evals/       test questions, scorers, experiment runner      (milestones 4-5)
 deploy/      the chat app on its own: Gradio UI, Dockerfile, AWS guide (milestone 6)
+docs/        evaluation-article.md: how the agent was measured and improved (milestone 7)
 ```
 
 ## Setup
