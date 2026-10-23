@@ -7,6 +7,7 @@ Explored step by step in notebooks/01_data_exploration.ipynb.
 """
 import hashlib
 import os
+import re
 import unicodedata
 from pathlib import Path
 
@@ -34,6 +35,10 @@ PER_CATEGORY = 20      # 10 x 20 = 200 books, every shelf equally represented
 MIN_DESC_CHARS = 100   # the search engine needs enough text to match against
 SEED = 42              # same seed -> the same 200 books on every machine
 
+# Scraping leftovers (found in Milestone 2): text-direction marks saved as the literal
+# text "u200e", or kept as invisible characters.
+SCRAPE_ARTIFACTS = re.compile(r"u200[ef]|u202[a-e]|[\u200e\u200f\u202a-\u202e]")
+
 
 def load_raw():
     """Download the public Kaggle dataset once (cached in data/raw/) and load it."""
@@ -45,10 +50,11 @@ def load_raw():
 
 
 def clean_text(value):
-    """Fix PDF 'presentation forms' (ﻣﺬﻛﺮات -> مذكرات) and collapse whitespace."""
+    """Fix PDF 'presentation forms' (ﻣﺬﻛﺮات -> مذكرات), drop scraping leftovers, collapse whitespace."""
     if pd.isna(value):
         return ""
-    return " ".join(unicodedata.normalize("NFKC", str(value)).split())
+    text = SCRAPE_ARTIFACTS.sub(" ", unicodedata.normalize("NFKC", str(value)))
+    return " ".join(text.split())
 
 
 def build_catalog(raw):
