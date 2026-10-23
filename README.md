@@ -174,7 +174,7 @@ bookrec/     the assistant: data prep, search engine, agents  (milestones 1-5)
 data/        catalog.csv is committed; raw/ downloads are git-ignored
 notebooks/   exploration and evaluation notebooks (run on Kaggle)
 evals/       test questions, scorers, experiment runner      (milestones 4-5)
-app/         Gradio chat UI + Dockerfile                     (milestone 6)
+deploy/      the chat app on its own: Gradio UI, Dockerfile, AWS guide (milestone 6)
 ```
 
 ## Setup

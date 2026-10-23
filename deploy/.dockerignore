@@ -1,0 +1,6 @@
+# Only what the Dockerfile copies belongs in the build, and never the local .env with real keys.
+.env
+.venv
+**/__pycache__
+README.md
+sync.py

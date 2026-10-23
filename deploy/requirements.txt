@@ -1,0 +1,11 @@
+# Runtime dependencies of the chat app only (the course notebooks and evals use ../requirements.txt).
+python-dotenv>=1.0    # loads .env for a local run
+pandas>=2.2           # reads the catalog
+scikit-learn>=1.4     # char TF-IDF search (search_books)
+openai>=1.66          # OpenAI models (and the plain agent, AGENT_FRAMEWORK=openai)
+langfuse>=4.10        # tracing, sessions and user_feedback scores
+langchain>=1.0        # the shipped LangGraph agent (create_agent)
+langchain-openai>=1.0 # OpenAI chat models for LangChain
+gradio>=6.0,<7        # the chat UI (6.x API: rtl chatbot, like events)
+fastapi>=0.115        # web server in front of Gradio (/health for the load balancer)
+uvicorn>=0.30         # runs the web server

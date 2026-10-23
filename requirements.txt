@@ -7,6 +7,3 @@ openai>=1.66          # milestone 3: the agent (Responses API + function calling
 langfuse>=4.10        # milestone 4: tracing, datasets and experiments
 langchain>=1.0        # milestone 5: the LangGraph version of the agent (create_agent)
 langchain-openai>=1.0 # milestone 5: OpenAI chat models for LangChain
-gradio>=6.0,<7        # milestone 6: the chat UI (6.x API: rtl chatbot, like events)
-fastapi>=0.115        # milestone 6: web server in front of Gradio (/health for the load balancer)
-uvicorn>=0.30         # milestone 6: runs the web server

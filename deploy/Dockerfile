@@ -1,4 +1,5 @@
-# Milestone 6: the chat app image (Gradio UI + the shipped LangGraph agent + the 200-book catalog).
+# The chat app image: Gradio UI + the shipped LangGraph agent + the 200-book catalog.
+# Build it from this folder: docker build -t arabic-book-recommender .
 # No keys inside: on AWS they arrive from Secrets Manager as environment variables.
 FROM python:3.11-slim
 
