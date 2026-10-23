@@ -26,7 +26,7 @@ Every milestone is committed separately, so you can check out any step and see t
 | 3 | Agent | An LLM that calls the search tool and answers in Arabic | ✅ |
 | 4 | Evaluate with Langfuse | Traces, 12 fixed test questions, code check + LLM judge | ✅ |
 | 5 | Improve | A stricter prompt and a LangGraph agent, kept only if they win | ✅ |
-| 6 | Deploy on AWS | Gradio chat app in a container on ECS Express Mode, HTTPS, secure keys | ⏳ |
+| 6 | Deploy on AWS | Gradio chat app in a container on ECS Express Mode, HTTPS, secure keys | ✅ |
 | 7 | Document and clean up | README, evaluation article, delete cloud resources | ⏳ |
 
 ## Data
@@ -167,6 +167,38 @@ python -m evals.run_experiment                              # the shipped agent 
 python -m evals.run_experiment --agent openai --prompt v1   # the Milestone 4 baseline
 ```
 
+## Chat app on AWS
+
+[deploy/](deploy) is the chat app on its own: a Gradio UI served by FastAPI (`/health`), the shipped agent,
+the catalog and a Dockerfile. Its [README](deploy/README.md) lists every deployment step. The app was tested
+first in [notebooks/06_chat_app.ipynb](notebooks/06_chat_app.ipynb), then deployed on **Amazon ECS Express Mode**:
+
+```text
+Browser ─HTTPS─▶ load balancer + certificate ─▶ Fargate task :8080 ─▶ LangGraph agent ─▶ OpenAI
+                                                  │ keys from Secrets Manager, never in the image
+                                                  └─ traces ─▶ Langfuse, environment "production"
+```
+
+| Part | Choice |
+|---|---|
+| Image | `python:3.11-slim`, non-root user, 737 MB, immutable tag `v1` in ECR, built and smoke-tested in CloudShell |
+| Service | 0.5 vCPU, 1 GB, exactly 1 task (Gradio keeps each chat in memory); first deployment about 7 minutes |
+| Keys | one secret, readable only by a dedicated execution role (`GetSecretValue` on that one ARN) |
+| Guards | 15 questions per chat, 500 characters per question, the last 10 messages go to the model |
+
+The page tells readers what happens to their data. **Every chat is saved** in Langfuse as one session: each
+question, every `search_books` call, tokens and cost (a two-question chat cost about $0.001). So the page asks
+people not to type personal information. **👍/👎** becomes a `user_feedback` score on that exact answer.
+
+Lessons from going live:
+
+- **Check the evidence before calling a refusal a bug.** The first real chat asked for a historical novel and
+  heard that the catalog has none. True: none of the 20 fiction books is one, and test question q01 allows
+  that answer. The fix was the UI: the welcome examples are now questions the agent answers well.
+- **👎 measures satisfaction, not correctness.** A 👎 on "no book about raising teenagers" pointed at a gap in
+  the catalog, not at the agent. Read the trace, then decide: fix the agent or fix the data, and add the
+  question to the test set either way.
+
 ## Project layout (filled in milestone by milestone)
 
 ```text
@@ -189,6 +221,8 @@ python -m bookrec.search "كتب عن تربية الأطفال"
 python -m bookrec.agent "أريد رواية تاريخية"      # needs OPENAI_API_KEY
 python -m evals.run_experiment                  # the shipped agent; needs the OpenAI and Langfuse keys
 ```
+
+The chat app has its own setup (Docker, or AWS): see [deploy/README.md](deploy/README.md).
 
 ## License
 
