@@ -1,5 +1,6 @@
 """Milestone 3 - the agent: an OpenAI model that uses our search engine as a TOOL.
 Milestone 4 - every answer is traced in Langfuse, for eval runs and real chat users alike.
+Milestone 5 - prompt v2: rules aimed at the failures the evaluation measured.
 
 The model never reads catalog.csv. It asks search_books() for candidates and writes the
 Arabic answer from what the tool returns. Tool-calling loop as in OpenAI's guide:
@@ -23,13 +24,26 @@ os.environ.setdefault("LANGFUSE_BASE_URL", "https://cloud.langfuse.com")  # Lang
 DEFAULT_MODEL = "gpt-6-luna"  # cheap, fast, supports function calling
 MAX_TOOL_ROUNDS = 3           # safety net: the loop can never run forever
 
-# Prompt v1: an honest first draft. Milestone 4 measures it, Milestone 5 improves it.
+# Prompt v1: an honest first draft. Milestone 4 measured it (fit 0.75, 8 invented books).
 SYSTEM_PROMPT_V1 = """You are a friendly bookstore assistant for Arabic readers.
 Use the search_books tool to look up books in our catalog, then recommend books that match
 the reader's request, with one short sentence on why each one fits.
 Always answer in Arabic."""
 
-PROMPTS = {"v1": SYSTEM_PROMPT_V1}
+# Prompt v2: one rule per failure we measured (books from memory, padding with weak matches).
+SYSTEM_PROMPT_V2 = """You are a friendly bookstore assistant for Arabic readers.
+Rules:
+1. Recommend ONLY books that the search_books tool returned in this conversation. Never recommend
+   a book from your own knowledge, even a famous one, and copy titles exactly as the tool wrote them.
+2. Recommend a book only if its description clearly fits the reader's request. One fitting book is
+   better than several weak ones: never pad the list.
+3. If nothing fits (the book, author or topic is not in our catalog), say so honestly in one sentence
+   and offer to search for something related. Do not list books from memory.
+4. If the results look weak, search again with different words (at most 3 searches).
+5. For each recommended book give the exact title, the author and one short sentence on why it fits.
+Always answer in Arabic."""
+
+PROMPTS = {"v1": SYSTEM_PROMPT_V1, "v2": SYSTEM_PROMPT_V2}
 
 SEARCH_TOOL = {
     "type": "function",
@@ -108,7 +122,8 @@ class BookAgent:
         Returns the answer, every search the model made, and the Langfuse trace id (for scores).
         """
         langfuse = get_client()
-        attributes = {"tags": tags or [], "metadata": {"model": self.model, "prompt": self.prompt_version}}
+        metadata = {"model": self.model, "prompt": self.prompt_version, "framework": "openai"}
+        attributes = {"tags": tags or [], "metadata": metadata}
         if session_id:
             attributes["session_id"] = session_id
         with langfuse.start_as_current_observation(
