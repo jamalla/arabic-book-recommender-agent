@@ -24,9 +24,9 @@ Every milestone is committed separately, so you can check out any step and see t
 | 1 | Prepare the data | A trustworthy 200-book catalog from the Jamalon dataset | ✅ |
 | 2 | Search engine | Char-level TF-IDF that tolerates Arabic spelling variations | ✅ |
 | 3 | Agent | An LLM that calls the search tool and answers in Arabic | ✅ |
-| 4 | Evaluate with Langfuse | Traces, 12 fixed test questions, code check + LLM judge | ⏳ |
-| 5 | Improve the prompt | Change one thing, re-test, keep it only if it wins | ⏳ |
-| 6 | Deploy on AWS | Container on ECS Express Mode with HTTPS and secure keys | ⏳ |
+| 4 | Evaluate with Langfuse | Traces, 12 fixed test questions, code check + LLM judge | ✅ |
+| 5 | Improve | A stricter prompt and a LangGraph agent, kept only if they win | ⏳ |
+| 6 | Deploy on AWS | Gradio chat app in a container on ECS Express Mode, HTTPS, secure keys | ⏳ |
 | 7 | Document and clean up | README, evaluation article, delete cloud resources | ⏳ |
 
 ## Data
@@ -78,7 +78,8 @@ questions in Milestone 4 test exactly that.
 the tool-calling loop from OpenAI's
 [function calling guide](https://developers.openai.com/api/docs/guides/function-calling)
 (Responses API, at most 3 rounds). The model never reads the catalog file: it only sees the books the
-tool returns, and writes the Arabic answer from them.
+tool returns, and writes the Arabic answer from them. `answer(question, history, session_id, tags)`
+supports multi-turn chats, so the same agent serves the evaluation and the chat app.
 
 ```bash
 python -m bookrec.agent "أريد رواية تاريخية"
@@ -92,18 +93,53 @@ python -m bookrec.agent "أريد رواية تاريخية"
 
 First live run in [notebooks/03_agent.ipynb](notebooks/03_agent.ipynb): three of four questions went
 well, including the Harry Potter trap ("not in our catalog"). But asked for Naguib Mahfouz novels, the
-agent searched, found none, and then recommended five famous Mahfouz novels **from memory**. A simple
-code check counted 5 of 9 recommended titles that are not in the catalog. Milestone 4 turns this into a
-fixed, repeatable evaluation.
+agent searched, found none, and then recommended five famous Mahfouz novels **from memory**.
+
+## Evaluation
+
+Every answer is traced in [Langfuse](https://langfuse.com): the agent, each model call (tokens,
+latency) and each `search_books` call. [evals/](evals) runs a fixed test set through the agent and
+scores every answer two ways:
+
+| Score | Type | What it measures |
+|---|---|---|
+| `invented_books` | code check | Recommended titles that are **not** in `catalog.csv`. An LLM only copies the titles out of the answer; plain code decides. |
+| `fit` | LLM judge (`gpt-6.1-sol`) | 0 to 1: do the recommended books fit the request? Padding and invented books score low. |
+
+The test set ([evals/dataset.py](evals/dataset.py)) has 12 questions: 9 normal ones across the catalog's
+shelves and 3 **traps** (Harry Potter, Naguib Mahfouz, Python programming) that the catalog provably
+does not contain.
+
+```bash
+python -m evals.run_experiment --prompt v1
+```
+
+**Baseline, prompt v1** ([notebooks/04_evaluation.ipynb](notebooks/04_evaluation.ipynb)):
+
+| Metric | Prompt v1 |
+|---|---:|
+| Average fit | 0.75 |
+| Grounded answers (0 invented books) | 11 / 12 |
+| Invented books | 8 |
+
+Behind the numbers: for Naguib Mahfouz the agent searched three times, found nothing and then
+recommended his famous novels **from memory**; for "a simple philosophy book" it padded the answer with
+a science book. Runs vary: the same questions scored 0.83 in an earlier run, so compare runs on the same
+dataset and read small differences with care.
+
+**Evaluate the evaluator.** The first run flagged six real books as invented. The code check and the
+judge disagreed, and reading the evidence showed why: the agent wrote «موجز تاريخ الكون: ...» while the
+catalog has «... الكون : ...», and one catalog title has a typo («مبائ» for «مبادئ»). The fix (compare
+titles by their letters, accept 90% similar titles) is covered by 10 test cases in the notebook.
 
 ## Project layout (filled in milestone by milestone)
 
 ```text
 bookrec/     the assistant: data prep, search engine, agent   (milestones 1-3)
 data/        catalog.csv is committed; raw/ downloads are git-ignored
-notebooks/   exploration notebooks (run on Kaggle)
-eval/        test questions, scorers, experiment runner      (milestones 4-5)
-app/         web chat UI + Dockerfile                        (milestone 6)
+notebooks/   exploration and evaluation notebooks (run on Kaggle)
+evals/       test questions, scorers, experiment runner      (milestones 4-5)
+app/         Gradio chat UI + Dockerfile                     (milestone 6)
 ```
 
 ## Setup
@@ -115,7 +151,8 @@ pip install -r requirements.txt
 copy .env.example .env          # then put your real keys in .env, never commit it
 python -m bookrec.prepare_data  # rebuilds data/catalog.csv
 python -m bookrec.search "كتب عن تربية الأطفال"
-python -m bookrec.agent "أريد رواية تاريخية"   # needs OPENAI_API_KEY in .env
+python -m bookrec.agent "أريد رواية تاريخية"      # needs OPENAI_API_KEY
+python -m evals.run_experiment --prompt v1      # needs the OpenAI and Langfuse keys
 ```
 
 ## License
