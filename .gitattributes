@@ -1,0 +1,3 @@
+# Store and check out text files with LF line endings on every OS.
+# This keeps Python, shell scripts and the Docker build identical on Windows and Linux.
+* text=auto eol=lf

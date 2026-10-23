@@ -1,0 +1,2 @@
+# Each milestone adds only the packages it needs.
+python-dotenv>=1.0    # loads the keys from .env into environment variables

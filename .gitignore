@@ -218,3 +218,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- This project ---
+# Raw dataset downloads stay local; only the cleaned catalog is committed
+data/raw/
+# Evaluation run outputs are regenerated on every run
+eval/runs/
