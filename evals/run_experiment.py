@@ -1,8 +1,8 @@
 """Milestone 4 - run the fixed test set through the agent and score every answer in Langfuse.
-Milestone 5 - choose the agent framework: the plain OpenAI SDK loop or the LangGraph version.
+Milestone 5 - pick the agent (framework + prompt); defaults come from bookrec.factory.
 
-    python -m evals.run_experiment --prompt v1
-    python -m evals.run_experiment --prompt v2 --agent langgraph
+    python -m evals.run_experiment                          # the shipped agent: LangGraph + prompt v2
+    python -m evals.run_experiment --agent openai --prompt v1
 
 Each question becomes one trace with the scores invented_books and fit; the whole run gets
 avg_fit, grounded_rate and invented_total. Compare runs side by side in Langfuse.
@@ -11,19 +11,13 @@ import argparse
 
 from langfuse import get_client
 
-from bookrec.agent import BookAgent
+from bookrec.factory import agent_settings, make_agent
 from evals.dataset import sync_dataset
 from evals.evaluators import avg_fit, catalog_check, fit_judge, grounded_rate, invented_total
 
 
-def make_agent(framework, prompt_version):
-    if framework == "langgraph":
-        from bookrec.agent_langgraph import LangGraphBookAgent  # needs LangChain only when used
-        return LangGraphBookAgent(prompt_version=prompt_version)
-    return BookAgent(prompt_version=prompt_version)
-
-
-def run(prompt_version="v1", framework="openai", max_concurrency=4):
+def run(prompt_version=None, framework=None, max_concurrency=4):
+    framework, prompt_version = agent_settings(framework, prompt_version)
     langfuse = get_client()
     dataset = sync_dataset(langfuse)
     agent = make_agent(framework, prompt_version)
@@ -46,7 +40,7 @@ def run(prompt_version="v1", framework="openai", max_concurrency=4):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the 12-question experiment in Langfuse.")
-    parser.add_argument("--prompt", default="v1", help="system prompt version, e.g. v1 or v2")
-    parser.add_argument("--agent", default="openai", choices=["openai", "langgraph"], help="agent framework")
+    parser.add_argument("--prompt", help="system prompt version: v1 or v2 (default: PROMPT_VERSION or v2)")
+    parser.add_argument("--agent", choices=["openai", "langgraph"], help="agent framework (default: AGENT_FRAMEWORK or langgraph)")
     args = parser.parse_args()
     print(run(args.prompt, args.agent).format())

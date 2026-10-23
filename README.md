@@ -25,7 +25,7 @@ Every milestone is committed separately, so you can check out any step and see t
 | 2 | Search engine | Char-level TF-IDF that tolerates Arabic spelling variations | ✅ |
 | 3 | Agent | An LLM that calls the search tool and answers in Arabic | ✅ |
 | 4 | Evaluate with Langfuse | Traces, 12 fixed test questions, code check + LLM judge | ✅ |
-| 5 | Improve | A stricter prompt and a LangGraph agent, kept only if they win | ⏳ |
+| 5 | Improve | A stricter prompt and a LangGraph agent, kept only if they win | ✅ |
 | 6 | Deploy on AWS | Gradio chat app in a container on ECS Express Mode, HTTPS, secure keys | ⏳ |
 | 7 | Document and clean up | README, evaluation article, delete cloud resources | ⏳ |
 
@@ -89,7 +89,7 @@ python -m bookrec.agent "أريد رواية تاريخية"
 |---|---|
 | Agent model | `gpt-6-luna` ($0.10 / $0.50 per 1M input / output tokens) |
 | Tool | `search_books(query)` returns the top 5 books with a 0-1 score (strict JSON schema) |
-| Prompt | v1, an honest first draft (`SYSTEM_PROMPT_V1`) |
+| Prompt | v1, an honest first draft (`SYSTEM_PROMPT_V1`); v2 replaced it in Milestone 5 |
 
 First live run in [notebooks/03_agent.ipynb](notebooks/03_agent.ipynb): three of four questions went
 well, including the Harry Potter trap ("not in our catalog"). But asked for Naguib Mahfouz novels, the
@@ -132,10 +132,45 @@ judge disagreed, and reading the evidence showed why: the agent wrote «موجز
 catalog has «... الكون : ...», and one catalog title has a typo («مبائ» for «مبادئ»). The fix (compare
 titles by their letters, accept 90% similar titles) is covered by 10 test cases in the notebook.
 
+## Improvement
+
+Milestone 5 changed **one thing at a time** and ran the same 12 questions again
+([notebooks/05_improve.ipynb](notebooks/05_improve.ipynb)):
+
+| Run | Agent | Prompt | Average fit | Grounded answers | Invented books |
+|---|---|---|---:|---:|---:|
+| A (baseline) | plain OpenAI loop | v1 | 0.750 | 11 / 12 | 8 |
+| B | plain OpenAI loop | v2 | 0.917 | 12 / 12 | 0 |
+| C | LangGraph (`create_agent`) | v2 | **1.000** | 12 / 12 | 0 |
+
+Prompt v2 (`SYSTEM_PROMPT_V2`) turns what the baseline showed into five rules:
+
+1. Recommend only books that `search_books` returned, never from memory, and copy titles exactly.
+2. Recommend only clear fits; never pad the list.
+3. If nothing fits, say the catalog does not have it and offer a related search.
+4. If the results are weak, search again with other words (at most 3 searches).
+5. Give the exact title, the author and one reason, always in Arabic.
+
+What the runs taught us:
+
+- **The prompt fixed invented books** (8 → 0), including the Naguib Mahfouz trap.
+- **A fix can cause a regression.** In run B the stricter prompt made the agent over-cautious on q09, a
+  normal question the catalog can answer. The average hides this; the per-question scores show it.
+- **Check the noise before trusting a difference.** Asked q09 five times, the plain loop refused once and
+  LangGraph never did. So LangGraph is at least as good here, not proven better.
+- **Decision: ship LangGraph + prompt v2.** [bookrec/factory.py](bookrec/factory.py) builds the shipped
+  agent for the chat app and the experiments; the plain agent stays one setting away
+  (`AGENT_FRAMEWORK=openai`).
+
+```bash
+python -m evals.run_experiment                              # the shipped agent (LangGraph + v2)
+python -m evals.run_experiment --agent openai --prompt v1   # the Milestone 4 baseline
+```
+
 ## Project layout (filled in milestone by milestone)
 
 ```text
-bookrec/     the assistant: data prep, search engine, agent   (milestones 1-3)
+bookrec/     the assistant: data prep, search engine, agents  (milestones 1-5)
 data/        catalog.csv is committed; raw/ downloads are git-ignored
 notebooks/   exploration and evaluation notebooks (run on Kaggle)
 evals/       test questions, scorers, experiment runner      (milestones 4-5)
@@ -152,7 +187,7 @@ copy .env.example .env          # then put your real keys in .env, never commit 
 python -m bookrec.prepare_data  # rebuilds data/catalog.csv
 python -m bookrec.search "كتب عن تربية الأطفال"
 python -m bookrec.agent "أريد رواية تاريخية"      # needs OPENAI_API_KEY
-python -m evals.run_experiment --prompt v1      # needs the OpenAI and Langfuse keys
+python -m evals.run_experiment                  # the shipped agent; needs the OpenAI and Langfuse keys
 ```
 
 ## License
