@@ -23,7 +23,7 @@ Every milestone is committed separately, so you can check out any step and see t
 | 0 | Project skeleton | Separate code, secrets and data from day one | ✅ |
 | 1 | Prepare the data | A trustworthy 200-book catalog from the Jamalon dataset | ✅ |
 | 2 | Search engine | Char-level TF-IDF that tolerates Arabic spelling variations | ✅ |
-| 3 | Agent | An LLM that calls the search tool and answers in Arabic | ⏳ |
+| 3 | Agent | An LLM that calls the search tool and answers in Arabic | ✅ |
 | 4 | Evaluate with Langfuse | Traces, 12 fixed test questions, code check + LLM judge | ⏳ |
 | 5 | Improve the prompt | Change one thing, re-test, keep it only if it wins | ⏳ |
 | 6 | Deploy on AWS | Container on ECS Express Mode with HTTPS and secure keys | ⏳ |
@@ -72,6 +72,30 @@ the key limitation: search **always** returns k books, even for «هاري بو�
 not in the catalog (scores around 0.1). Deciding that nothing fits is the agent's job, and the trap
 questions in Milestone 4 test exactly that.
 
+## Agent
+
+[bookrec/agent.py](bookrec/agent.py) gives an OpenAI model one tool, `search_books(query)`, and runs
+the tool-calling loop from OpenAI's
+[function calling guide](https://developers.openai.com/api/docs/guides/function-calling)
+(Responses API, at most 3 rounds). The model never reads the catalog file: it only sees the books the
+tool returns, and writes the Arabic answer from them.
+
+```bash
+python -m bookrec.agent "أريد رواية تاريخية"
+```
+
+| Setting | Value |
+|---|---|
+| Agent model | `gpt-6-luna` ($0.10 / $0.50 per 1M input / output tokens) |
+| Tool | `search_books(query)` returns the top 5 books with a 0-1 score (strict JSON schema) |
+| Prompt | v1, an honest first draft (`SYSTEM_PROMPT_V1`) |
+
+First live run in [notebooks/03_agent.ipynb](notebooks/03_agent.ipynb): three of four questions went
+well, including the Harry Potter trap ("not in our catalog"). But asked for Naguib Mahfouz novels, the
+agent searched, found none, and then recommended five famous Mahfouz novels **from memory**. A simple
+code check counted 5 of 9 recommended titles that are not in the catalog. Milestone 4 turns this into a
+fixed, repeatable evaluation.
+
 ## Project layout (filled in milestone by milestone)
 
 ```text
@@ -91,6 +115,7 @@ pip install -r requirements.txt
 copy .env.example .env          # then put your real keys in .env, never commit it
 python -m bookrec.prepare_data  # rebuilds data/catalog.csv
 python -m bookrec.search "كتب عن تربية الأطفال"
+python -m bookrec.agent "أريد رواية تاريخية"   # needs OPENAI_API_KEY in .env
 ```
 
 ## License
